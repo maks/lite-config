@@ -9,8 +9,7 @@ local style = require "core.style"
 -- alt dark theme require "user.colors.fall"
 
 -- Key bindings
-
--- bind ctrl+X for first 9 tabs
+-- bind ctrl+[Num] for first 9 tabs
 for i = 1, 9 do
   keymap.add { ["ctrl+" .. i] = "root:switch-to-tab-" .. i }
 end
@@ -18,3 +17,7 @@ end
 keymap.add { ["ctrl+q"] = "core:quit" }
 keymap.add { ["ctrl+d"] = "doc:duplicate-lines" }
 
+config.ollama = {
+  model = "qwen3-coder:latest",
+  url = "http://192.168.1.148:11434/api/generate"
+}
