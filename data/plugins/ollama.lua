@@ -21,7 +21,6 @@ local FIM_TEMPLATES = {
 -- #############################################################################
 -- # Helper Functions
 -- #############################################################################
-
 local function shell_escape(s) return "'" .. s:gsub("'", "'\\''") .. "'" end
 
 local function json_escape(text)
@@ -43,23 +42,35 @@ local function json_decode_response(json_string)
   return nil
 end
 
+local function json_decode_tags(json_string)
+  if not json_string or json_string == "" then return {} end
+  local models = {}
+  for name in json_string:gmatch('"name":s*"(.-)"') do
+    table.insert(models, { text = name }) -- Create a table for each model
+  end
+  return models
+end
+
 -- #############################################################################
 -- # Status & Progress Indicator
 -- #############################################################################
-
 local ollama_status = { start_time = nil }
+
 local old_get_items = StatusView.get_items
 function StatusView:get_items()
   local left, right = old_get_items(self)
+  table.insert(right, 1, style.dim)
+  table.insert(right, 2, self.separator)
+  table.insert(right, 3, style.text)
+  table.insert(right, 4, "Ollama")
   if ollama_status.start_time then
     local elapsed = math.floor(system.get_time() - ollama_status.start_time)
-    table.insert(right, 1, style.accent)
-    table.insert(right, 2, string.format("ollama:%ds", elapsed))
-    table.insert(right, 3, self.separator)
-    table.insert(right, 4, style.dim)
+    table.insert(right, 5, style.accent)
+    table.insert(right, 6, string.format(":%ds", elapsed))
   end
   return left, right
 end
+
 
 -- #############################################################################
 -- # Main Command Logic
@@ -69,11 +80,9 @@ local function build_fim_prompt(doc, include_file_context)
   -- 1. Get current file content and split at cursor
   local line, col = doc:get_selection()
   local text = table.concat(doc.lines, "")
-
   local byte_offset = 0
   for i = 1, line - 1 do byte_offset = byte_offset + #doc.lines[i] end
   byte_offset = byte_offset + col - 1
-
   local prefix = text:sub(1, byte_offset)
   local suffix = text:sub(byte_offset + 1)
 
@@ -86,7 +95,6 @@ local function build_fim_prompt(doc, include_file_context)
   local file_context_parts = {}
   for _, other_doc in ipairs(core.docs) do
     if other_doc ~= doc and other_doc.filename then
-      -- Per your request, we only add the file path for now
       table.insert(file_context_parts, other_doc.filename)
     end
   end
@@ -94,13 +102,7 @@ local function build_fim_prompt(doc, include_file_context)
 
   -- 4. Get language and assemble the heading for the current file
   local language = doc.highlighter.syntax.name or "text"
-  local heading = string.format(
-    "--- Path: %s Language: %s ---",
-    doc.filename or "untitled",
-    language
-  )
-
-  -- 5. Assemble and return the final advanced prompt
+  local heading = string.format("--- Path: %s Language: %s ---", doc.filename or "untitled", language)
   return string.format(FIM_TEMPLATES.qwen_context, file_context, heading, prefix, suffix)
 end
 
@@ -110,22 +112,15 @@ local function run_ollama_command(doc, prompt, model_name, line, col)
     return
   end
 
-  local url = (config.ollama and config.ollama.url) or "http://localhost:11434/api/generate"
+  local base_url = (config.ollama and config.ollama.url) or "http://localhost:11434"
+  local url = base_url .. "/api/generate"
+
   ollama_status.start_time = system.get_time()
 
   core.add_thread(function()
     local temp_file = core.temp_filename()
-    local json_payload = string.format(
-      '{"model": "%s", "prompt": %s, "stream": false}',
-      model_name,
-      json_escape(prompt)
-    )
-    local curl_command = string.format(
-      "curl -s -X POST %s -d %s > %q 2>/dev/null",
-      url,
-      shell_escape(json_payload),
-      temp_file
-    )
+    local json_payload = string.format('{"model": "%s", "prompt": %s, "stream": false}', model_name, json_escape(prompt))
+    local curl_command = string.format("curl -s -X POST %s -d %s > %q 2>/dev/null", url, shell_escape(json_payload), temp_file)
 
     core.log("Ollama executing for model '%s'", model_name)
     system.exec(curl_command)
@@ -138,15 +133,9 @@ local function run_ollama_command(doc, prompt, model_name, line, col)
     end
 
     ollama_status.start_time = nil
-
     local fp = io.open(temp_file)
-    if not fp then
-      core.error("Ollama: Could not open temporary file.")
-      return
-    end
-
-    local result = fp:read("*a")
-    fp:close()
+    if not fp then core.error("Ollama: Could not open temporary file."); return end
+    local result = fp:read("*a"); fp:close()
 
     local response_text = json_decode_response(result)
     if response_text then
@@ -162,8 +151,6 @@ end
 command.add("core.docview", {
   ["ollama:generate"] = function()
     local doc = core.active_view.doc
-
-    -- Load configuration just-in-time
     local model = (config.ollama and config.ollama.model) or "qwen3-coder:latest"
     local fim_model = (config.ollama and config.ollama.fim_model) or model
     local use_context = (config.ollama and config.ollama.include_file_context) or false
@@ -183,7 +170,44 @@ command.add("core.docview", {
   end,
 })
 
+command.add(nil, {
+  ["ollama:list-models"] = function()
+    core.log("Ollama: Fetching model list...")
+    local base_url = (config.ollama and config.ollama.url) or "http://localhost:11434"
+    local url = base_url .. "/api/tags"
+
+    core.add_thread(function()
+      local temp_file = core.temp_filename()
+      local curl_command = string.format("curl -s %s > %q 2>/dev/null", url, temp_file)
+      core.log("Ollama: Listing models with command: %s", curl_command)
+      system.exec(curl_command)
+
+      coroutine.yield(2)
+
+      local fp = io.open(temp_file)
+      if not fp then core.error("Ollama: Could not open temp file for tags."); return end
+      local result = fp:read("*a"); fp:close()
+
+      local models = json_decode_tags(result)
+      if models and #models > 0 then
+        local function on_model_select(text, item)
+          if item and item.text then
+            system.set_clipboard(item.text)
+            core.log("Ollama: Copied '%s' to clipboard.", item.text)
+          end
+        end
+        -- We now pass the title, the on_done callback, and the function to get the items
+        core.command_view:enter("Ollama Models", on_model_select, function() return models end)
+      else
+        core.error("Ollama: No models found or failed to parse tags.")
+        core.log("Full Response: " .. tostring(result))
+      end
+    end)
+  end
+})
+
 -- Keybinding
 keymap.add {
   ["alt+\\"] = "ollama:generate",
+  ["alt+l"] = "ollama:list-models",
 }

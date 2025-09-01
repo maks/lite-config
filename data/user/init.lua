@@ -19,7 +19,7 @@ keymap.add { ["ctrl+d"] = "doc:duplicate-lines" }
 
 config.ollama = {
   model = "qwen3-coder:latest",
-  url = "http://192.168.1.148:11434/api/generate",
+  url = "http://192.168.1.148:11434", -- base url
   fim_model = "qwen2.5-coder:1.5b-base", -- A different model for FIM
   include_file_context = false -- Set to true to enable context from other tabs
 }
