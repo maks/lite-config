@@ -52,21 +52,21 @@ local function json_decode_tags(json_string)
 end
 
 -- #############################################################################
--- # Status & Progress Indicator
+-- # Status Bar Progress Indicator
 -- #############################################################################
+
 local ollama_status = { start_time = nil }
 
 local old_get_items = StatusView.get_items
 function StatusView:get_items()
   local left, right = old_get_items(self)
-  table.insert(right, 1, style.dim)
-  table.insert(right, 2, self.separator)
-  table.insert(right, 3, style.text)
-  table.insert(right, 4, "Ollama")
+  -- If a request is in progress, add the timer to the status bar
   if ollama_status.start_time then
     local elapsed = math.floor(system.get_time() - ollama_status.start_time)
-    table.insert(right, 5, style.accent)
-    table.insert(right, 6, string.format(":%ds", elapsed))
+    table.insert(right, 1, style.dim)
+    table.insert(right, 2, self.separator)
+    table.insert(right, 3, style.accent)
+    table.insert(right, 4, string.format("Ollama:%ds", elapsed))
   end
   return left, right
 end
