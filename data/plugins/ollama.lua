@@ -20,6 +20,21 @@ local FIM_TEMPLATES = {
 }
 
 -- #############################################################################
+-- # Custom Prompts
+-- #############################################################################
+
+-- Users can add their own prompts here or override in their user/init.lua file.
+-- Example for user/init.lua:
+-- config.ollama.custom_prompts = {
+--   { text = "Translate to French", prompt = "Translate the following to French:\n\n{input}" }
+-- }
+local CUSTOM_PROMPTS = {
+  { text = "Summarize",   prompt = "Summarize the following text:\n\n{input}" },
+  { text = "Explain",     prompt = "Explain the following code:\n\n{input}" },
+  { text = "Fix Grammar", prompt = "Fix the grammar and spelling in the following text:\n\n{input}" }
+}
+
+-- #############################################################################
 -- # Helper Functions
 -- #############################################################################
 
@@ -68,7 +83,6 @@ end
 -- # Main Command Logic
 -- #############################################################################
 
--- 1. Get current file content and split at cursor
 local function build_fim_prompt(doc)
   local use_context = (config.ollama and config.ollama.include_file_context) or false
   local line, col = doc:get_selection()
@@ -113,7 +127,7 @@ local function run_ollama_command(doc, prompt, model_name, line, col)
 
   core.add_thread(function()
     local temp_file = core.temp_filename()
-    
+
     --  Use a Lua table for the payload
     local payload_table = {
       model = model_name,
@@ -124,7 +138,7 @@ local function run_ollama_command(doc, prompt, model_name, line, col)
     local json_payload = json.encode(payload_table)
 
     local curl_command = string.format("curl -s -X POST %s -d %s > %q 2>/dev/null", url, shell_escape(json_payload), temp_file)
-    
+
     core.log("Ollama executing for model '%s'", model_name)
     system.exec(curl_command)
 
@@ -134,15 +148,15 @@ local function run_ollama_command(doc, prompt, model_name, line, col)
       if info and info.size > 0 then coroutine.yield(0.1); break end
       coroutine.yield(0.1)
     end
-    
+
     ollama_status.start_time = nil
-    
+
     local fp = io.open(temp_file)
     if not fp then core.error("Ollama: Could not open temporary file."); return end
     local result = fp:read("*a"); fp:close()
-    
+
     local response_text = json_decode_response(result)
-    
+
     if response_text then
       doc:insert(line, col, "\n" .. response_text)
       core.log("Ollama: Response inserted.")
@@ -173,9 +187,53 @@ command.add("core.docview", {
       run_ollama_command(doc, prompt, fim_model, line, col)
     end
   end,
+
+  -- Command for handling custom prompts
+  ["ollama:custom-prompt"] = function()
+    local doc = core.active_view.doc
+    local model = (config.ollama and config.ollama.model) or "llama3.1:latest"
+    local prompts = (config.ollama and config.ollama.custom_prompts) or CUSTOM_PROMPTS
+
+    -- Phase 1: Let the user choose a prompt template
+    local function on_prompt_select(text, item)
+      if not item or not item.prompt then return end
+      local template = item.prompt
+
+      -- Phase 2: Get user input for the {input} placeholder
+      local function on_input_done(text)
+        local input = text
+        -- If the user didn't type anything, use the current selection
+        if input == "" and doc:has_selection() then
+          doc:replace(function(sel_text) input = sel_text; return sel_text end)
+        end
+
+        if input == "" then
+          core.error("Ollama: No input provided for the prompt.")
+          return
+        end
+
+        -- snsure properly escaped input text
+        input = input:gsub("%%", "%%%%")
+
+        -- Construct the final prompt and run the command
+        local final_prompt = template:gsub("{input}", input)
+
+        -- Create a new doc for the response
+        local new_doc = core.open_doc()
+        core.root_view:open_doc(new_doc)
+
+        run_ollama_command(new_doc, final_prompt, model, 1, 1)
+      end
+
+      -- Show the input prompt in the command view
+      core.command_view:enter(item.text .. ": ", on_input_done)
+    end
+
+    -- Show the list of custom prompts in the command view
+    core.command_view:enter("Custom Prompt", on_prompt_select, function() return prompts end)
+  end,
 })
 
--- MODIFICATION: The list-models command is now separate and correctly implemented.
 command.add(nil, {
   ["ollama:list-models"] = function()
     local base_url = (config.ollama and config.ollama.url) or "http://localhost:11434"
@@ -187,13 +245,13 @@ command.add(nil, {
       local curl_command = string.format("curl -s %s > %q 2>/dev/null", url, temp_file)
       system.exec(curl_command)
       coroutine.yield(2)
-      
+
       local fp = io.open(temp_file)
       if not fp then core.error("Ollama: Could not open temp file for tags."); return end
       local result = fp:read("*a"); fp:close()
-      
+
       local models = json_decode_tags(result)
-      
+
       if models and #models > 0 then
         -- This is the correct callback implementation to show the list in the command pane
         local function on_model_select(text, item)

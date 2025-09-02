@@ -21,5 +21,12 @@ config.ollama = {
   model = "qwen3-coder:latest",
   url = "http://192.168.1.148:11434", -- base url
   fim_model = "qwen2.5-coder:1.5b-base", -- A different model for FIM
-  include_file_context = false -- Set to true to enable context from other tabs
+  include_file_context = false, -- Set to true to enable context from other tabs
+  custom_prompts =  {
+    { text = "Summarize",  prompt = "Summarize the following text:\n\n{input}" },
+    { text = "Explain",    prompt = "Explain the following code:\n\n{input}" },
+    { text = "Review",     prompt = "Review the following code and make concise suggestions:\n\n{input}" },
+    { text = "Fix Grammar", prompt = "Fix the grammar and spelling in the following text:\n\n```{input}```" }
+  }
 }
+
