@@ -5,7 +5,7 @@ local keymap = require "core.keymap"
 local style = require "core.style"
 local StatusView = require "core.statusview"
 local config = require "core.config"
-local json = require "plugins.json" -- Need the json.lua library to be in plugins dir
+local json = require "plugins.json"
 
 -- #############################################################################
 -- # FIM Prompt Templates
@@ -24,6 +24,26 @@ local FIM_TEMPLATES = {
 -- #############################################################################
 
 local function shell_escape(s) return "'" .. s:gsub("'", "'\\''") .. "'" end
+
+local function json_decode_response(json_string)
+  if not json_string or json_string == "" then return nil end
+  local data = json.decode(json_string)
+  return data and data.response
+end
+
+-- This function correctly returns a list of tables for the command view
+local function json_decode_tags(json_string)
+  if not json_string or json_string == "" then return {} end
+  local data = json.decode(json_string)
+  local models = {}
+  if data and data.models then
+    for _, model_info in ipairs(data.models) do
+      table.insert(models, { text = model_info.name })
+    end
+  end
+  return models
+end
+
 
 -- #############################################################################
 -- # Status Bar Progress Indicator
@@ -93,7 +113,7 @@ local function run_ollama_command(doc, prompt, model_name, line, col)
 
   core.add_thread(function()
     local temp_file = core.temp_filename()
-
+    
     --  Use a Lua table for the payload
     local payload_table = {
       model = model_name,
@@ -104,7 +124,7 @@ local function run_ollama_command(doc, prompt, model_name, line, col)
     local json_payload = json.encode(payload_table)
 
     local curl_command = string.format("curl -s -X POST %s -d %s > %q 2>/dev/null", url, shell_escape(json_payload), temp_file)
-
+    
     core.log("Ollama executing for model '%s'", model_name)
     system.exec(curl_command)
 
@@ -114,19 +134,17 @@ local function run_ollama_command(doc, prompt, model_name, line, col)
       if info and info.size > 0 then coroutine.yield(0.1); break end
       coroutine.yield(0.1)
     end
-
+    
     ollama_status.start_time = nil
-
+    
     local fp = io.open(temp_file)
     if not fp then core.error("Ollama: Could not open temporary file."); return end
     local result = fp:read("*a"); fp:close()
-
-    -- Decode the JSON string into a Lua table using the library
-    local data = json.decode(result)
-    local response_text = data and data.response
-
+    
+    local response_text = json_decode_response(result)
+    
     if response_text then
-      doc:insert(line, col, response_text)
+      doc:insert(line, col, "\n" .. response_text)
       core.log("Ollama: Response inserted.")
     else
       core.error("Ollama: Could not parse response from API.")
@@ -155,9 +173,11 @@ command.add("core.docview", {
       run_ollama_command(doc, prompt, fim_model, line, col)
     end
   end,
+})
 
+-- MODIFICATION: The list-models command is now separate and correctly implemented.
+command.add(nil, {
   ["ollama:list-models"] = function()
-    local doc = core.active_view.doc
     local base_url = (config.ollama and config.ollama.url) or "http://localhost:11434"
     local url = base_url .. "/api/tags"
     core.log("Ollama: Fetching model list...")
@@ -167,32 +187,28 @@ command.add("core.docview", {
       local curl_command = string.format("curl -s %s > %q 2>/dev/null", url, temp_file)
       system.exec(curl_command)
       coroutine.yield(2)
-
+      
       local fp = io.open(temp_file)
       if not fp then core.error("Ollama: Could not open temp file for tags."); return end
       local result = fp:read("*a"); fp:close()
-
-      -- Decode the JSON string into a Lua table
-      local data = json.decode(result)
-
-      if data and data.models and #data.models > 0 then
-        local line, col = doc:get_selection()
-
-        -- Extract the names from the table of models
-        local model_names = {}
-        for _, model_item in ipairs(data.models) do
-          table.insert(model_names, model_item.name)
+      
+      local models = json_decode_tags(result)
+      
+      if models and #models > 0 then
+        -- This is the correct callback implementation to show the list in the command pane
+        local function on_model_select(text, item)
+          if item and item.text then
+            system.set_clipboard(item.text)
+            core.log("Ollama: Copied '%s' to clipboard.", item.text)
+          end
         end
-
-        local text_to_insert = table.concat(model_names, "\n")
-        doc:insert(line, col, text_to_insert)
-        core.log("Ollama: Inserted %d model names.", #model_names)
+        core.command_view:enter("Ollama Models", on_model_select, function() return models end)
       else
         core.error("Ollama: No models found or failed to parse tags response.")
         core.log("Full Response: " .. tostring(result))
       end
     end)
-  end,
+  end
 })
 
 -- #############################################################################
@@ -200,6 +216,5 @@ command.add("core.docview", {
 -- #############################################################################
 
 keymap.add {
-  ["alt+\\"] = "ollama:generate",
-  ["alt+l"] = "ollama:list-models",
+  ["alt+\\"] = "ollama:generate"
 }
