@@ -74,7 +74,8 @@ function StatusView:get_items()
     table.insert(right, 1, style.dim)
     table.insert(right, 2, self.separator)
     table.insert(right, 3, style.accent)
-    table.insert(right, 4, string.format("Ollama:%ds", elapsed))
+    table.insert(right, 4, string.format("%s:%ds", config.ollama.model, elapsed))
+    table.insert(right, 5, self.separator)
   end
   return left, right
 end

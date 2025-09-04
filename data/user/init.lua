@@ -26,9 +26,13 @@ config.ollama = {
   include_file_context = false, -- Set to true to enable context from other tabs
   custom_prompts =  {
     { text = "Summarize",  prompt = "Summarize the following text:\n\n{input}" },
-    { text = "Explain",    prompt = "Explain the following code:\n\n{input}" },
+    { text = "Explain Code",    prompt = "Explain the following code:\n\n{input}" },
+    { text = "Tell About",    prompt = "Tell me about:\n\n{input}" },
     { text = "Review",     prompt = "Review the following code and make concise suggestions:\n\n{input}" },
-    { text = "Fix Grammar", prompt = "Fix the grammar and spelling in the following text:\n\n```{input}```" }
+    { text = "Fix Grammar", prompt = "Fix the grammar and spelling in the following text:\n\n```{input}```" },
+    { text = "Better wording", prompt = "Modify the following text to improve grammar and spelling:\n{input}"},
+    { text = "Make Concise", prompt = "Modify the following text to make it as simple and concise as possible:\n{input}"},
+    { text = "Make List", prompt = "Render the following text as a markdown list:\n{input}"},
+    { text = "Make Table", prompt = "Render the following text as a markdown table::\n{input}"},
   }
 }
-
