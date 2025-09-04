@@ -50,7 +50,7 @@ command.add("core.docview", {
       text = table.concat(blocks, "\n\n")
 
       -- add prefix to start of lines
-      text = prefix1 .. text:gsub("\n", "\n" .. prefix2) .. trailing
+      text = prefix1 .. text:gsub("\n", prefix2) .. trailing
 
       return text
     end)
