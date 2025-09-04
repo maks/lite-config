@@ -14,7 +14,7 @@ for i = 1, 9 do
   keymap.add { ["ctrl+" .. i] = "root:switch-to-tab-" .. i }
 end
 
-keymap.add { ["ctrl+q"] = "core:quit" }
+keymap.add { ["ctrl+alt+q"] = "core:quit" }
 keymap.add { ["ctrl+d"] = "doc:duplicate-lines" }
 keymap.add { ["ctrl+shift+z"] = "doc:redo" }
 

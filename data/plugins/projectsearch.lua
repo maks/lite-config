@@ -4,7 +4,7 @@ local keymap = require "core.keymap"
 local command = require "core.command"
 local style = require "core.style"
 local View = require "core.view"
-
+local DocView = require "core.docview"
 
 local ResultsView = View:extend()
 
@@ -213,15 +213,23 @@ local function begin_search(text, fn)
   core.root_view:get_active_node():add_view(rv)
 end
 
-
 command.add(nil, {
   ["project-search:find"] = function()
+    local docview = core.active_view
+    local selected_text = ""
+    if (docview and docview:is(DocView)) then
+      local line1, col1, line2, col2 = docview.doc:get_selection(true)
+      selected_text = docview.doc:get_text(line1, col1, line2, col2)
+    end
+
     core.command_view:enter("Find Text In Project", function(text)
       text = text:lower()
       begin_search(text, function(line_text)
         return line_text:lower():find(text, nil, true)
       end)
     end)
+    -- prepopulate with selected text if there was any
+    core.command_view:set_text(selected_text, true)
   end,
 
   ["project-search:find-pattern"] = function()
