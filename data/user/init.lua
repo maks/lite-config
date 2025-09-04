@@ -16,6 +16,8 @@ end
 
 keymap.add { ["ctrl+q"] = "core:quit" }
 keymap.add { ["ctrl+d"] = "doc:duplicate-lines" }
+keymap.add { ["ctrl+shift+z"] = "doc:redo" }
+
 
 config.ollama = {
   model = "qwen3-coder:latest",
